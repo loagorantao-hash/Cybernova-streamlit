@@ -43,4 +43,20 @@ def get_session():
 def init_db():
     engine = get_engine()
     Base.metadata.create_all(engine)
+    
+    # Auto-seed if database is empty
+    from backend.database.queries import run_query
+    try:
+        check = run_query("SELECT COUNT(*) as cnt FROM web_logs")
+        if not check or check[0]['cnt'] == 0:
+            csv_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "cybernova_web_logs_500k.csv")
+            if os.path.exists(csv_path):
+                import pandas as pd
+                print(f"Database empty. Seeding from {csv_path}...")
+                df = pd.read_csv(csv_path)
+                df.to_sql("web_logs", con=engine, if_exists="append", index=False, chunksize=5000)
+                print("Seeding complete.")
+    except Exception as e:
+        print(f"Auto-seed warning: {e}")
+        
     return engine

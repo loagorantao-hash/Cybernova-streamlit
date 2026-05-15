@@ -9,6 +9,6 @@ venv/
 data/*.db
 data/*.db-wal
 data/*.db-shm
-data/*.csv
 data/*.parquet
+!data/cybernova_web_logs_500k.csv
 data/raw/

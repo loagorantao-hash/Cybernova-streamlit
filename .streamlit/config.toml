@@ -7,7 +7,6 @@ textColor = "#f8fafc"
 font = "sans serif"
 
 [server]
-baseUrlPath = "Auth"
 maxUploadSize = 500
 enableCORS = false
 enableXsrfProtection = false
