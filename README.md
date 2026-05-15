@@ -1,17 +1,17 @@
-# CyberNova Analytics
+# CyberNova Analytics Ltd — Gaborone HQ
 
-Enterprise-grade Web Log Analytics Platform built with Streamlit, Pandas, and Plotly, designed for CET333 Product Development.
+Enterprise-grade AI-Driven Cybersecurity & Sales Intelligence Platform designed to monitor digital resilience across Southern Africa.
 
 ## Overview
 
-CyberNova Analytics processes up to 500,000 synthetic IIS web server logs to provide role-based business intelligence dashboards. It features a modern 2026 SaaS design system (dark mode glassmorphism) and satisfies 22 functional requirements.
+CyberNova Analytics processes up to 500,000 synthetic IIS web server logs to provide role-based business intelligence for SMEs, financial institutions, and government agencies. It features a modern 2026 SaaS design system (dark mode glassmorphism) and evaluates sales strategy, AI Assistant adoption, and regional performance.
 
 ## Key Features
-- **3 Role-Based Dashboards**: Website User, Business Analyst, System Administrator.
-- **Advanced Analytics**: Conversion funnels, campaign ROI, geographic choropleth maps, and statistical distributions.
-- **Data Ingestion**: Processes 500K records from Parquet files with built-in data cleaning pipelines (duplicate removal, null handling).
-- **Export Capabilities**: Download filtered views to CSV or Excel.
-- **Modern UI**: Streamlit application wrapped in a custom dark glassmorphism CSS theme with responsive metrics and charts.
+- **3 Role-Based Dashboards**: Website User (Client), Business Analyst (Sales Team), System Administrator.
+- **Sales Strategy Assessment**: Evaluates team performance, conversion efficiency, and job placements across Southern Africa.
+- **AI Assistant Tracking**: Dedicated metrics for AI Advisory interactions, Demo Requests, and Event Participation.
+- **Advanced Analytics**: Conversion funnels, Response Time vs. Revenue scatterplots, geographic choropleth maps, and descriptive statistics (Mean, Std Dev).
+- **Data Ingestion**: Processes 500K records with built-in data cleaning pipelines (duplicate removal, null handling).
 
 ## Setup Instructions
 
