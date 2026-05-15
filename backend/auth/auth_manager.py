@@ -20,7 +20,7 @@ class AuthManager:
             user = User(
                 username=username.strip(),
                 email=email.strip().lower(),
-                password_hash=bcrypt.hash(password),
+                password_hash=bcrypt.hash(password[:72]),
                 role=role,
                 is_active=True,
             )
@@ -45,7 +45,7 @@ class AuthManager:
                 User.email == email.strip().lower(),
                 User.is_active == True,
             ).first()
-            if not user or not bcrypt.verify(password, user.password_hash):
+            if not user or not bcrypt.verify(password[:72], user.password_hash):
                 return {"success": False, "error": "Invalid email or password."}
             user.last_login = datetime.now()
             session.add(AuditLog(user_id=user.id, username=user.username,
