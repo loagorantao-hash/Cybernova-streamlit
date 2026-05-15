@@ -45,10 +45,10 @@ def main():
             letter-spacing:-0.03em; margin:0 0 12px;
             background:linear-gradient(135deg,#f1f5f9,#60a5fa);
             -webkit-background-clip:text; -webkit-text-fill-color:transparent;
-        ">CyberNova Analytics</h1>
+        ">CyberNova Analytics Ltd</h1>
         <p style="font-size:16px;color:#64748b;max-width:480px;line-height:1.6;margin:0 0 32px;">
-            Enterprise Web Log Intelligence Platform.<br>
-            Transform 500,000 IIS server logs into actionable business intelligence.
+            <b>Gaborone Headquarters</b><br>
+            Securing SMEs, Financial Institutions, and Government Agencies across Southern Africa with AI-driven Resilience.
         </p>
         <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
             <div style="padding:10px 20px;background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.3);
@@ -61,7 +61,7 @@ def main():
             </div>
             <div style="padding:10px 20px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);
                         border-radius:10px;font-size:12px;color:#34d399;font-weight:600;">
-                Real-time Analytics
+                AI-Driven Insights
             </div>
         </div>
     </div>

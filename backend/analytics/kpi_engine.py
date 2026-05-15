@@ -176,6 +176,32 @@ class KPIEngine:
         """
         return get_dataframe(sql)
 
+    # ── Specialized Business Case Metrics (CyberNova Gaborone) ────────────────
+    
+    def jobs_analysis(self) -> pd.DataFrame:
+        """Report on Job Types Requested (Service Names)."""
+        sql = f"""
+            SELECT service_name as job_type, COUNT(*) as request_count
+            FROM web_logs
+            {self.base_where}
+            GROUP BY service_name
+            ORDER BY request_count DESC
+        """
+        return get_dataframe(sql)
+
+    def cyber_assistant_metrics(self) -> dict:
+        """Track usage of the AI Assistant and Demo requests."""
+        sql = f"""
+            SELECT 
+                SUM(CASE WHEN activity_type = 'AI_ASSISTANT' THEN 1 ELSE 0 END) as assistant_uses,
+                SUM(CASE WHEN activity_type = 'DEMO_REQUEST' THEN 1 ELSE 0 END) as demo_requests,
+                SUM(CASE WHEN activity_type = 'EVENT_PARTICIPATION' THEN 1 ELSE 0 END) as event_participants
+            FROM web_logs
+            {self.base_where}
+        """
+        result = run_query(sql)
+        return result[0] if result else {"assistant_uses": 0, "demo_requests": 0, "event_participants": 0}
+
     def geo_distribution(self, top_n: int = 30) -> pd.DataFrame:
         """Return visit/conversion/revenue counts by location (DB column is 'location')."""
         sql = f"""

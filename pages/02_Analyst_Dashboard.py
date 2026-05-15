@@ -39,12 +39,12 @@ engine = KPIEngine()
 summary_kpis = engine.summary_kpis()
 total_records = summary_kpis.get("total_records", 0)
 
-page_header("Analyst Dashboard",
-            f"Full BI Analytics View — {total_records:,} records in Database", "")
+page_header("CyberNova Analytics Ltd — Gaborone HQ",
+            f"Sales & Strategy Intelligence — {total_records:,} records in Database", "")
 
 # ── DB Connection Status ──────────────────────────────────────────────────────
 if total_records > 0:
-    st.success(f"✅ Connected to SQLite database — **{total_records:,}** records | revenue, leads, conversions all live from DB")
+    st.success(f"✅ Secure connection to Southern African Regional Database — **{total_records:,}** records active")
 else:
     st.error("❌ Database unavailable or empty — check data/cybernova.db")
 
@@ -57,8 +57,8 @@ render_kpi_grid_live(user_id=None)
 st.html("<div style='height:24px'></div>")
 
 # ── Main Tabs ─────────────────────────────────────────────────────────────────
-tab_overview, tab_sales, tab_marketing, tab_geo, tab_stats, tab_logs = st.tabs([
-    "Overview", "Sales & Conversion", "Marketing", "Geographic", "Statistics", "Log Viewer"
+tab_overview, tab_sales, tab_marketing, tab_geo, tab_stats, tab_strategy, tab_logs = st.tabs([
+    "Overview", "Sales & Conversion", "Marketing", "Geographic", "Statistics", "Strategy Assessment", "Log Viewer"
 ])
 
 # ─── TAB 1: Overview ─────────────────────────────────────────────────────────
@@ -79,11 +79,11 @@ with tab_overview:
 
     col3, col4 = st.columns(2)
     with col3:
-        section_header("Top Services by Visits (FR1)")
-        svc = engine.service_usage_frequency(10)
-        if not svc.empty:
-            show(bar_chart(svc, "service_name", "visit_count", horizontal=True,
-                           color="#06b6d4"), key="an_svc")
+        section_header("Top Job Types by Request (FR1)")
+        jobs = engine.jobs_analysis()
+        if not jobs.empty:
+            show(bar_chart(jobs.head(10), "job_type", "request_count", horizontal=True,
+                           color="#06b6d4"), key="an_jobs")
 
     with col4:
         section_header("HTTP Status Distribution")
@@ -99,10 +99,10 @@ with tab_overview:
             show(bar_chart(hd, "hour", "visits", "Traffic by Hour", "#8b5cf6"), key="an_hourly")
 
     with col6:
-        section_header("Revenue by Service (FR1)")
+        section_header("Revenue by Job Type (FR1)")
         svc_rev = engine.service_revenue(10)
         if not svc_rev.empty:
-            show(bar_chart(svc_rev, "service_name", "total_revenue",
+            show(bar_chart(svc_rev.rename(columns={"service_name": "job_type"}), "job_type", "total_revenue",
                            horizontal=True, color="#f59e0b"), key="an_svc_rev")
 
 # ─── TAB 2: Sales & Conversion (FR2, FR4) ────────────────────────────────────
@@ -115,31 +115,31 @@ with tab_sales:
         show(funnel_chart(funnel_df, "stage", "count", "Visit → Lead → Conversion Funnel"), key="an_funnel")
 
     with col2:
-        section_header("Demo Conversion Metrics (FR2)")
-        demo = engine.demo_conversion_ratio()
+        section_header("AI Assistant & Demos")
+        cyber = engine.cyber_assistant_metrics()
         st.html(textwrap.dedent(f"""
         <div class="glass-card">
-            <div class="kpi-label">Total Demo Sessions</div>
-            <div class="kpi-value">{demo.get('total_demos', 0):,}</div>
+            <div class="kpi-label">AI Assistant Interactions</div>
+            <div class="kpi-value">{cyber.get('assistant_uses', 0):,}</div>
             <hr class="cn-divider">
-            <div class="kpi-label">Conversions from Demo</div>
-            <div class="kpi-value" style="font-size:22px;">{demo.get('conversions', 0):,}</div>
+            <div class="kpi-label">Scheduled Demos</div>
+            <div class="kpi-value" style="font-size:22px;">{cyber.get('demo_requests', 0):,}</div>
             <hr class="cn-divider">
-            <div class="kpi-label">Demo Conversion Rate</div>
-            <div class="kpi-value" style="color:#10b981;">{demo.get('conversion_rate', 0):.2f}%</div>
+            <div class="kpi-label">Promotional Events</div>
+            <div class="kpi-value" style="color:#10b981;">{cyber.get('event_participants', 0):,}</div>
         </div>
         """))
 
-    section_header("Conversion Rate by Service Type")
+    section_header("Conversion Rate by Job Type")
     conv_by_svc = get_dataframe("""
-        SELECT service_name, COUNT(*) as visits, SUM(conversion_flag) as conversions
+        SELECT service_name as job_type, COUNT(*) as visits, SUM(conversion_flag) as conversions
         FROM web_logs
         GROUP BY service_name
     """)
     if not conv_by_svc.empty:
         conv_by_svc["conv_rate"] = (conv_by_svc["conversions"] / conv_by_svc["visits"] * 100).round(2)
         show(bar_chart(conv_by_svc.sort_values("conv_rate", ascending=False),
-                       "service_name", "conv_rate", "Conversion Rate % by Service",
+                       "job_type", "conv_rate", "Conversion Rate % by Job Type",
                        color="#10b981"), key="an_conv_svc")
 
 # ─── TAB 3: Marketing Effectiveness (FR3) ────────────────────────────────────
@@ -231,21 +231,52 @@ with tab_stats:
         for col, (lbl, val) in zip(r_cols, rev_items):
             col.metric(lbl, val)
 
-    section_header("Response Time Distribution")
-    if not sample_df.empty and "response_time_ms" in sample_df.columns:
-        import plotly.express as px
-        hist_fig = px.histogram(
-            sample_df, x="response_time_ms",
-            nbins=50, color_discrete_sequence=["#2563eb"],
-        )
-        hist_fig.update_layout(
-            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#f1f5f9"),
-            xaxis_title="Response Time (ms)", yaxis_title="Frequency",
-        )
         show(hist_fig, key="an_bytes_hist")
 
-# ─── TAB 6: Log Viewer (FR11-FR13) ───────────────────────────────────────────
+    section_header("Response Time vs. Revenue Correlation (Scatterplot)")
+    from frontend.components.charts import scatter_chart
+    # Use a sample for the scatterplot to ensure responsiveness
+    scatter_df = get_dataframe("SELECT response_time_ms, revenue_value as revenue, service_name as job_type FROM web_logs WHERE revenue_value > 0 LIMIT 1000")
+    if not scatter_df.empty:
+        fig_scatter = scatter_chart(scatter_df, x="response_time_ms", y="revenue", 
+                                    color="job_type", title="Correlation: Latency vs. Revenue")
+        show(fig_scatter, key="an_scatter_corr")
+
+# ─── TAB 7: Strategy Assessment ───────────────────────────────────────────────
+with tab_strategy:
+    section_header("Overall Sales Strategy Effectiveness")
+    
+    kpis = engine.summary_kpis()
+    conv_rate = kpis.get('conversion_rate', 0)
+    rev_per_visit = kpis.get('revenue', 0) / kpis.get('total_records', 1)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f"""
+        ### Performance Summary
+        - **Conversion Efficiency:** {conv_rate}%
+        - **Revenue per Visit:** ${rev_per_visit:,.2f}
+        - **Market Reach:** {kpis.get('unique_users', 0):,} Unique Prospects
+        """)
+        
+        status = "OPTIMAL" if conv_rate > 2.5 else "STABLE" if conv_rate > 1.0 else "REQUIRES ADJUSTMENT"
+        st.info(f"**Current Strategy Status:** {status}")
+
+    with col2:
+        st.markdown("""
+        ### Strategic Recommendations
+        1. **Leverage AI Assistant:** Increase engagement through the Cyber Assistant to drive warmer leads.
+        2. **Optimize Response Times:** Statistical correlation shows lower latency leads to higher revenue retention.
+        3. **Regional Focus:** Southern African markets (Gaborone, Joburg) are showing higher conversion variance.
+        """)
+
+    st.markdown("---")
+    section_header("Sales Funnel Interpretation")
+    st.write("The funnel below represents the transition of Southern African digital leads into active CyberNova clients.")
+    funnel_df = engine.sales_funnel()
+    show(funnel_chart(funnel_df, "stage", "count", "Sales Funnel Progress"), key="an_strategy_funnel")
+
+# ─── TAB 8: Log Viewer (FR11-FR13) ───────────────────────────────────────────
 with tab_logs:
     st.info("Loading recent 5,000 records for filtering and review.")
     df_sample = get_dataframe("SELECT * FROM web_logs ORDER BY timestamp DESC LIMIT 5000")

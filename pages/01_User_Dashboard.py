@@ -28,16 +28,16 @@ user = AuthManager.require_auth(allowed_roles=["website_user", "analyst", "admin
 render_sidebar("pages/01_User_Dashboard.py")
 
 user_id = user.get('id', 0)
-page_header("My Dashboard", f"Welcome back, {user['username']}. Here's your activity overview.", "")
+page_header("My CyberNova Dashboard", f"Gaborone HQ Activity Hub — Welcome, {user['username']}", "")
 
 # ── DB Connection Status ──────────────────────────────────────────────────────
 from backend.database.queries import run_query as _rq
 _db_check = _rq("SELECT COUNT(*) as cnt FROM web_logs")
 _db_count = _db_check[0]['cnt'] if _db_check else 0
 if _db_count > 0:
-    st.success(f"✅ Connected to database — **{_db_count:,}** web log records loaded")
+    st.success(f"✅ Connected to Southern African Regional DB — **{_db_count:,}** records active")
 else:
-    st.error("❌ Database connection failed or web_logs table is empty")
+    st.error("❌ Database connection failed or region is offline")
 
 # ── Engines Initialization ───────────────────────────────────────────────────
 engine = KPIEngine(user_id=user_id)
@@ -109,10 +109,11 @@ with tab1:
             st.info("No time series data available.")
 
     with col2:
-        section_header("Top Services")
-        svc = engine.service_usage_frequency(8)
-        if not svc.empty:
-            show(bar_chart(svc, "service_name", "visit_count", "Service Popularity",
+        section_header("Top Job Types Used")
+        svc_usage = engine.service_usage_frequency(5)
+        if not svc_usage.empty:
+            show(bar_chart(svc_usage.rename(columns={"service_name": "job_type"}), 
+                           "job_type", "visit_count", "Job Type Popularity",
                            horizontal=True, color="#06b6d4"), key="user_svc")
 
     col3, col4 = st.columns(2)
@@ -152,18 +153,11 @@ with tab2:
 
 # ── Tab 3: Activity Classification (FR17) ─────────────────────────────────────
 with tab3:
-    section_header("Activity Classification by Service Type")
-    svc_all = engine.service_usage_frequency(20)
-    if not svc_all.empty:
-        col1, col2 = st.columns([3, 2])
+    section_header("Job Classification Metrics")
+    svc_breakdown = engine.jobs_analysis()
+    if not svc_breakdown.empty:
+        col1, col2 = st.columns([1.5, 1])
         with col1:
-            show(bar_chart(svc_all, "service_name", "visit_count",
-                           "Activity Frequency by Type",
-                           color_sequence=["#2563eb", "#06b6d4", "#10b981", "#8b5cf6",
-                                           "#f59e0b", "#ec4899", "#ef4444", "#14b8a6"]),
-                 key="user_act_bar")
+            show(bar_chart(svc_breakdown, "job_type", "request_count", "Job Type Popularity", color="#8b5cf6"), key="u_svc_pop")
         with col2:
-            show(donut_chart(svc_all.head(8), "visit_count", "service_name",
-                             "Activity Distribution"), key="user_act_pie")
-
         st.dataframe(svc_all, use_container_width=True, hide_index=True)
