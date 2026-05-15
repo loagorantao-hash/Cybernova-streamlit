@@ -64,33 +64,33 @@ def summary_banner(kpis: dict):
     fmt_money = lambda n: f"${n:,.2f}"
 
     metrics = [
-        {"label": "Total Visits",      "value": fmt_num(kpis.get("total_visits", 0)),
+        {"label": "Total Visits",      "value": fmt_num(kpis.get("total_records", 0)),
          "detail": "All log records",   "color": "#2563eb"},
-        {"label": "Unique Visitors",    "value": fmt_num(kpis.get("unique_visitors", 0)),
-         "detail": "Distinct IPs",      "color": "#06b6d4"},
-        {"label": "Total Conversions",  "value": fmt_num(kpis.get("total_conversions", 0)),
+        {"label": "Unique Visitors",    "value": fmt_num(kpis.get("unique_users", 0)),
+         "detail": "Distinct Users",    "color": "#06b6d4"},
+        {"label": "Total Leads",        "value": fmt_num(kpis.get("leads", 0)),
+         "detail": "Expressed interest","color": "#f59e0b"},
+        {"label": "Total Conversions",  "value": fmt_num(kpis.get("conversions", 0)),
          "detail": "Successful actions","color": "#10b981"},
         {"label": "Conversion Rate",    "value": fmt_pct(kpis.get("conversion_rate", 0)),
-         "detail": "Visit → Action",    "color": "#8b5cf6"},
-        {"label": "Total Revenue",      "value": fmt_money(kpis.get("total_revenue", 0)),
+         "detail": "Lead → Action",     "color": "#8b5cf6"},
+        {"label": "Total Revenue",      "value": fmt_money(kpis.get("revenue", 0)),
          "detail": "Gross revenue",     "color": "#f59e0b"},
-        {"label": "Avg Revenue/Conv.",  "value": fmt_money(kpis.get("avg_revenue_per_conversion", 0)),
-         "detail": "Per conversion",    "color": "#ec4899"},
-        {"label": "Countries Reached",  "value": fmt_num(kpis.get("unique_countries", 0)),
-         "detail": "Global presence",   "color": "#14b8a6"},
+        {"label": "Avg Response Time",  "value": f"{kpis.get('avg_response_time', 0):.0f} ms",
+         "detail": "System latency",    "color": "#14b8a6"},
         {"label": "Error Rate",         "value": fmt_pct(kpis.get("error_rate", 0)),
          "positive": kpis.get("error_rate", 0) < 5,
          "detail": "4xx/5xx responses", "color": "#ef4444"},
     ]
     kpi_grid(metrics)
 @st.fragment(run_every=10 if st.session_state.get("live_mode") else None)
-def render_kpi_grid_live(df: pd.DataFrame):
+def render_kpi_grid_live(user_id: Optional[str] = None):
     """
     Renders a live-updating KPI grid. 
-    Recalculates KPIs from the dataframe every 10 seconds if live mode is on.
+    Recalculates KPIs from the database every 10 seconds if live mode is on.
     """
     from backend.analytics.kpi_engine import KPIEngine
-    engine = KPIEngine(df)
+    engine = KPIEngine(user_id=user_id)
     kpis = engine.summary_kpis()
     
     fmt_num = lambda n: f"{n:,.0f}" if isinstance(n, (int, float)) else str(n)
@@ -98,20 +98,20 @@ def render_kpi_grid_live(df: pd.DataFrame):
     fmt_money = lambda n: f"${n:,.2f}"
 
     metrics = [
-        {"label": "Total Visits",      "value": fmt_num(kpis.get("total_visits", 0)),
+        {"label": "Total Visits",      "value": fmt_num(kpis.get("total_records", 0)),
          "detail": "All log records",   "color": "#2563eb"},
-        {"label": "Unique Visitors",    "value": fmt_num(kpis.get("unique_visitors", 0)),
-         "detail": "Distinct IPs",      "color": "#06b6d4"},
-        {"label": "Total Conversions",  "value": fmt_num(kpis.get("total_conversions", 0)),
+        {"label": "Unique Visitors",    "value": fmt_num(kpis.get("unique_users", 0)),
+         "detail": "Distinct Users",    "color": "#06b6d4"},
+        {"label": "Total Leads",        "value": fmt_num(kpis.get("leads", 0)),
+         "detail": "Expressed interest","color": "#f59e0b"},
+        {"label": "Total Conversions",  "value": fmt_num(kpis.get("conversions", 0)),
          "detail": "Successful actions","color": "#10b981"},
         {"label": "Conversion Rate",    "value": fmt_pct(kpis.get("conversion_rate", 0)),
-         "detail": "Visit → Action",    "color": "#8b5cf6"},
-        {"label": "Total Revenue",      "value": fmt_money(kpis.get("total_revenue", 0)),
+         "detail": "Lead → Action",     "color": "#8b5cf6"},
+        {"label": "Total Revenue",      "value": fmt_money(kpis.get("revenue", 0)),
          "detail": "Gross revenue",     "color": "#f59e0b"},
-        {"label": "Avg Revenue/Conv.",  "value": fmt_money(kpis.get("avg_revenue_per_conversion", 0)),
-         "detail": "Per conversion",    "color": "#ec4899"},
-        {"label": "Countries Reached",  "value": fmt_num(kpis.get("unique_countries", 0)),
-         "detail": "Global presence",   "color": "#14b8a6"},
+        {"label": "Avg Response Time",  "value": f"{kpis.get('avg_response_time', 0):.0f} ms",
+         "detail": "System latency",    "color": "#14b8a6"},
         {"label": "Error Rate",         "value": fmt_pct(kpis.get("error_rate", 0)),
          "positive": kpis.get("error_rate", 0) < 5,
          "detail": "4xx/5xx responses", "color": "#ef4444"},

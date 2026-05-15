@@ -11,6 +11,8 @@ _engine = None
 _SessionLocal = None
 
 
+from sqlalchemy import event
+
 def get_engine():
     global _engine
     if _engine is None:
@@ -19,6 +21,14 @@ def get_engine():
             connect_args={"check_same_thread": False},
             echo=False,
         )
+        
+        @event.listens_for(_engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.close()
+            
         Base.metadata.create_all(_engine)
     return _engine
 

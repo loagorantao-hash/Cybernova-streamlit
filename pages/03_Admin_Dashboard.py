@@ -17,12 +17,15 @@ from backend.data_ingestion.dataset_loader import load_dataset, get_dataset_info
 from backend.data_ingestion.cleaner import clean_pipeline, validate_data_types
 from backend.services.user_service import UserService
 from backend.services.export_service import export_csv, export_excel, get_export_filename
-from backend.analytics.performance_monitor import get_system_metrics
-from config import PARQUET_FILE, ROLES
+from backend.live_engine import LiveEngine
+from config import ROLES
 
 @st.fragment(run_every=10 if st.session_state.get("live_mode") else None)
 def render_system_health():
-    metrics = get_system_metrics()
+    if 'live_engine' not in st.session_state:
+        df_loaded = load_dataset()
+        st.session_state.live_engine = LiveEngine(df_loaded, refresh_interval=st.session_state.get('refresh_interval', 5))
+    metrics = st.session_state.live_engine.refresh_system_health()
     perf_cols = st.columns(4)
     perf_cols[0].metric("Uptime", metrics["uptime"])
     perf_cols[1].metric("CPU Usage", f"{metrics['cpu_percent']:.1f}%")
@@ -31,9 +34,9 @@ def render_system_health():
 
     perf_cols2 = st.columns(4)
     perf_cols2[0].metric("DB Size", f"{metrics['db_size_mb']:.2f} MB")
-    perf_cols2[1].metric("Dataset Size", f"{metrics['parquet_size_mb']:.1f} MB")
+    perf_cols2[1].metric("Row Count", f"{metrics.get('row_count', 0):,}")
     perf_cols2[2].metric("Python", metrics["python_version"])
-    perf_cols2[3].metric("Dataset Loaded", "Yes" if metrics["dataset_loaded"] else "No")
+    perf_cols2[3].metric("DB Status", metrics.get("db_health", "Unknown"))
 
     # Memory bar
     mem_pct = metrics["memory_percent"]
@@ -58,9 +61,19 @@ render_sidebar("pages/03_Admin_Dashboard.py")
 
 page_header("Admin Dashboard", "System administration, user management, and data operations", "")
 
+# ── DB Connection Status ──────────────────────────────────────────────────────
+from backend.database.queries import run_query as _rq
+_db_check = _rq("SELECT COUNT(*) as cnt FROM web_logs")
+_db_count = _db_check[0]['cnt'] if _db_check else 0
+if _db_count > 0:
+    st.success(f"✅ Database connected — **{_db_count:,}** records in web_logs | users table active")
+else:
+    st.error("❌ Database connection failed or web_logs is empty")
+
+
 # ── Tabs ───────────────────────────────────────────────────────────────────────
-tab_users, tab_dataset, tab_clean, tab_export, tab_perf = st.tabs([
-    "User Management", "Dataset Upload", "Data Cleaning", "Data Export", "System Health"
+tab_users, tab_dataset, tab_clean, tab_export, tab_perf, tab_logs = st.tabs([
+    "User Management", "Dataset Upload", "Data Cleaning", "Data Export", "System Health", "Live Logs"
 ])
 
 # ─── TAB 1: User Management (FR9) ────────────────────────────────────────────
@@ -130,20 +143,33 @@ with tab_users:
 # ─── TAB 2: Dataset Upload (FR10) ────────────────────────────────────────────
 with tab_dataset:
     section_header("Current Dataset Info (FR10)")
-    df_loaded = load_dataset()
-    info = get_dataset_info(df_loaded)
+    # get_dataset_info() now queries SQL directly — no DataFrame arg needed
+    info = get_dataset_info()
+
+    # Pull richer stats directly from the DB
+    from backend.database.queries import run_query
+    db_stats = run_query("""
+        SELECT
+            COUNT(DISTINCT location) as countries,
+            COUNT(DISTINCT service_name) as services,
+            MIN(timestamp) as date_min,
+            MAX(timestamp) as date_max
+        FROM web_logs
+    """)
+    db_row = db_stats[0] if db_stats else {}
 
     i_cols = st.columns(4)
     i_cols[0].metric("Total Records", f"{info['total_records']:,}")
-    i_cols[1].metric("Countries", info["countries"])
-    i_cols[2].metric("Services", info["services"])
-    i_cols[3].metric("Memory (MB)", f"{info['memory_mb']:.1f}")
+    i_cols[1].metric("Countries / Regions", db_row.get('countries', 'N/A'))
+    i_cols[2].metric("Services", db_row.get('services', 'N/A'))
+    i_cols[3].metric("DB Source", "cybernova.db")
 
     st.html(textwrap.dedent(f"""
     <div class="glass-card" style="margin-top:12px;">
         <div style="font-size:12px;color:#94a3b8;line-height:2;">
-            <strong style="color:#f1f5f9;">Date Range:</strong> {info['date_range'][0]} → {info['date_range'][1]}<br>
-            <strong style="color:#f1f5f9;">Columns:</strong> {', '.join(info['columns'][:12])}{'...' if len(info['columns']) > 12 else ''}
+            <strong style="color:#f1f5f9;">Date Range:</strong> {db_row.get('date_min', 'N/A')} → {db_row.get('date_max', 'N/A')}<br>
+            <strong style="color:#f1f5f9;">Data Source:</strong> cybernova_web_logs_500k.csv → SQLite (cybernova.db)<br>
+            <strong style="color:#f1f5f9;">Schema:</strong> timestamp, user_id, ip_address, session_id, activity_type, service_name, page_url, http_status, response_time_ms, location, campaign_id, campaign_type, referrer, lead_flag, conversion_flag, revenue_value
         </div>
     </div>
     """))
@@ -166,10 +192,14 @@ with tab_dataset:
                 st.dataframe(new_df.head(5), use_container_width=True, hide_index=True)
 
                 if st.button("Save as Active Dataset"):
-                    PARQUET_FILE.parent.mkdir(parents=True, exist_ok=True)
-                    new_df.to_parquet(PARQUET_FILE, index=False)
-                    st.success(f"Dataset saved to {PARQUET_FILE}. Reload the app to use it.")
-                    load_dataset.clear()
+                    from backend.database.connection import get_engine
+                    try:
+                        engine = get_engine()
+                        new_df.to_sql("web_logs", con=engine, if_exists="append", index=False, chunksize=5000)
+                        st.success("Dataset successfully appended to the live SQLite database. Reload the app to see the changes.")
+                        load_dataset.clear()
+                    except Exception as e:
+                        st.error(f"Database error: {e}")
             except Exception as e:
                 st.error(f"Error processing file: {e}")
 
@@ -212,34 +242,45 @@ with tab_clean:
                 "Records Removed Total": clean_report["records_removed"],
             })
             if st.button("Save Cleaned Dataset"):
-                cleaned_df.to_parquet(PARQUET_FILE, index=False)
+                from backend.database.connection import get_engine
+                engine = get_engine()
+                cleaned_df.to_sql("web_logs", con=engine, if_exists="replace", index=False, chunksize=5000)
                 load_dataset.clear()
-                st.success("Cleaned dataset saved.")
+                st.success("Cleaned dataset successfully replaced the SQLite database.")
 
 # ─── TAB 4: Data Export (FR16) ───────────────────────────────────────────────
 with tab_export:
     section_header("Export Dataset (FR16)")
-    df_exp = load_dataset()
+    df_exp = load_dataset(limit=100000) # Load a larger sample for export
+    
+    if not df_exp.empty:
+        total_available = len(df_exp)
+        
+        if total_available >= 1000:
+            max_rows = st.slider("Max rows to export", 1000, total_available,
+                                 value=min(10000, total_available), step=1000)
+            export_df = df_exp.head(max_rows)
+        else:
+            st.info(f"Exporting all {total_available} available records.")
+            export_df = df_exp
 
-    max_rows = st.slider("Max rows to export", 1000, min(100000, len(df_exp)),
-                         value=min(10000, len(df_exp)), step=1000)
-    export_df = df_exp.head(max_rows)
+        fname = get_export_filename("cybernova_full_export")
+        col1, col2 = st.columns(2)
+        col1.download_button(
+            "Download CSV", export_csv(export_df),
+            file_name=f"{fname}.csv", mime="text/csv", use_container_width=True,
+        )
+        col2.download_button(
+            "Download Excel", export_excel(export_df),
+            file_name=f"{fname}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
 
-    fname = get_export_filename("cybernova_full_export")
-    col1, col2 = st.columns(2)
-    col1.download_button(
-        "Download CSV", export_csv(export_df),
-        file_name=f"{fname}.csv", mime="text/csv", use_container_width=True,
-    )
-    col2.download_button(
-        "Download Excel", export_excel(export_df),
-        file_name=f"{fname}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
-    )
-
-    st.caption(f"Exporting **{len(export_df):,}** of **{len(df_exp):,}** records.")
-    st.dataframe(export_df.head(10), use_container_width=True, hide_index=True)
+        st.caption(f"Exporting **{len(export_df):,}** of **{total_available:,}** records.")
+        st.dataframe(export_df.head(10), use_container_width=True, hide_index=True)
+    else:
+        st.warning("No data available for export.")
 
 # ─── TAB 5: System Performance (FR22) ────────────────────────────────────────
 with tab_perf:
@@ -249,3 +290,19 @@ with tab_perf:
 
     if st.button("Manual Refresh Metrics"):
         st.rerun()
+
+# ─── TAB 6: Live Logs ─────────────────────────────────────────────────────────
+with tab_logs:
+    section_header("Live System Logs")
+    st.info("Showing the latest 1000 database records in real-time.")
+    
+    @st.fragment(run_every=st.session_state.get('refresh_interval', 5) if st.session_state.get('live_mode', False) else None)
+    def render_live_logs():
+        from backend.database.queries import get_dataframe
+        logs_df = get_dataframe("SELECT timestamp, user_id, ip_address, activity_type, service_name, http_status, response_time_ms FROM web_logs ORDER BY timestamp DESC LIMIT 1000")
+        if not logs_df.empty:
+            st.dataframe(logs_df, use_container_width=True, hide_index=True, height=500)
+        else:
+            st.warning("No logs found.")
+            
+    render_live_logs()

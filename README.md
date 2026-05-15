@@ -36,3 +36,4 @@ CyberNova Analytics processes up to 500,000 synthetic IIS web server logs to pro
    ```bash
    streamlit run app.py
    ```
+   py -m streamlit run app.py

@@ -65,12 +65,16 @@ def apply_filters(
 
 def get_filter_options(df: pd.DataFrame) -> dict:
     """Return unique values for filter dropdowns."""
+    if "timestamp" in df.columns and not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
+        df = df.copy()
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors='coerce')
+    
     return {
         "countries": sorted(df["country"].dropna().unique().tolist()) if "country" in df.columns else [],
         "services": sorted(df["service_type"].dropna().unique().tolist()) if "service_type" in df.columns else [],
         "status_codes": sorted(df["status_code"].dropna().unique().tolist()) if "status_code" in df.columns else [],
         "methods": sorted(df["method"].dropna().unique().tolist()) if "method" in df.columns else [],
         "campaigns": sorted(df["campaign_id"].dropna().unique().tolist()) if "campaign_id" in df.columns else [],
-        "date_min": df["timestamp"].min().date() if "timestamp" in df.columns else None,
-        "date_max": df["timestamp"].max().date() if "timestamp" in df.columns else None,
+        "date_min": df["timestamp"].min().date() if "timestamp" in df.columns and not df["timestamp"].empty else None,
+        "date_max": df["timestamp"].max().date() if "timestamp" in df.columns and not df["timestamp"].empty else None,
     }

@@ -1,128 +1,193 @@
 import pandas as pd
-import numpy as np
 from typing import Optional
-
+from backend.database.queries import get_dataframe, run_query
 
 class KPIEngine:
-    """Calculates all KPIs required by FR1–FR4 and FR22."""
+    """Calculates KPIs directly from the SQLite database using SQL."""
 
-    def __init__(self, df: pd.DataFrame):
-        self.df = df
+    def __init__(self, user_id=None):
+        """
+        user_id: integer from the users table (1, 2, 3 …)
+        web_logs.user_id stores strings like 'USER_1', so we cannot
+        do a direct equality match. For personal dashboards we show
+        all data (no per-user filter) since there is no FK link.
+        """
+        self.user_id = user_id
+        # web_logs.user_id has no FK to users.id — no reliable filter.
+        self.base_where = ""
+        self.and_where = ""
+
+    def summary_kpis(self) -> dict:
+        # DB columns: http_status, revenue_value, response_time_ms, lead_flag, conversion_flag, user_id (TEXT)
+        sql = f"""
+            SELECT 
+                COUNT(*) as total_records,
+                COUNT(DISTINCT user_id) as unique_users,
+                SUM(revenue_value) as revenue,
+                SUM(lead_flag) as leads,
+                SUM(conversion_flag) as conversions,
+                AVG(response_time_ms) as avg_response_time,
+                SUM(CASE WHEN http_status >= 400 THEN 1 ELSE 0 END) as errors
+            FROM web_logs
+            {self.base_where}
+        """
+        result = run_query(sql)
+        if not result or result[0]['total_records'] == 0:
+            return {
+                "total_records": 0, "unique_users": 0, "revenue": 0.0,
+                "leads": 0, "conversions": 0, "conversion_rate": 0.0,
+                "avg_response_time": 0.0, "errors": 0, "error_rate": 0.0
+            }
+        
+        row = result[0]
+        total = row['total_records'] or 0
+        conversions = row['conversions'] or 0
+        errors = row['errors'] or 0
+        
+        return {
+            "total_records": total,
+            "unique_users": row['unique_users'] or 0,
+            "revenue": row['revenue'] or 0.0,
+            "leads": row['leads'] or 0,
+            "conversions": conversions,
+            "conversion_rate": round((conversions / total) * 100, 2) if total > 0 else 0.0,
+            "avg_response_time": round(row['avg_response_time'] or 0.0, 2),
+            "errors": errors,
+            "error_rate": round((errors / total) * 100, 2) if total > 0 else 0.0
+        }
 
     # ── FR1: Product/Service Performance ─────────────────────────────────────
     def service_usage_frequency(self, top_n: int = 10) -> pd.DataFrame:
-        """FR1: Visit count per service type."""
-        if "service_type" not in self.df.columns:
-            return pd.DataFrame()
-        counts = self.df["service_type"].value_counts().head(top_n).reset_index()
-        counts.columns = ["service_type", "visit_count"]
-        total = counts["visit_count"].sum()
-        counts["percentage"] = (counts["visit_count"] / total * 100).round(2)
-        return counts
+        sql = f"""
+            SELECT service_name, COUNT(*) as visit_count
+            FROM web_logs
+            {self.base_where}
+            GROUP BY service_name
+            ORDER BY visit_count DESC
+            LIMIT {top_n}
+        """
+        return get_dataframe(sql)
 
     def service_revenue(self, top_n: int = 10) -> pd.DataFrame:
-        """FR1: Revenue per service type."""
-        if not all(c in self.df.columns for c in ["service_type", "revenue"]):
-            return pd.DataFrame()
-        rev = self.df.groupby("service_type")["revenue"].sum().sort_values(ascending=False).head(top_n).reset_index()
-        rev.columns = ["service_type", "total_revenue"]
-        return rev
+        sql = f"""
+            SELECT service_name, SUM(revenue_value) as total_revenue
+            FROM web_logs
+            {self.base_where}
+            GROUP BY service_name
+            ORDER BY total_revenue DESC
+            LIMIT {top_n}
+        """
+        return get_dataframe(sql)
 
     # ── FR2: Sales Effectiveness ──────────────────────────────────────────────
-    def demo_conversion_ratio(self) -> dict:
-        """FR2: Demo visits → conversion rate."""
-        if "service_type" not in self.df.columns:
-            return {}
-        demo_mask = self.df["service_type"].str.contains("demo|trial|free", case=False, na=False)
-        demos = self.df[demo_mask]
-        total_demos = len(demos)
-        if total_demos == 0:
-            return {"total_demos": 0, "conversions": 0, "conversion_rate": 0.0}
-        conversions = demos["conversion_flag"].sum() if "conversion_flag" in demos.columns else 0
-        return {
-            "total_demos": int(total_demos),
-            "conversions": int(conversions),
-            "conversion_rate": round(conversions / total_demos * 100, 2),
-        }
-
     def sales_funnel(self) -> pd.DataFrame:
-        """FR2/FR4: Conversion funnel stages."""
-        total = len(self.df)
-        engaged = int(total * 0.65)
-        demo_users = int(total * 0.35)
-        conversions = int(self.df["conversion_flag"].sum()) if "conversion_flag" in self.df.columns else int(total * 0.12)
+        # Funnel stages: Total Visits -> Leads -> Conversions
+        kpis = self.summary_kpis()
         return pd.DataFrame({
-            "stage": ["Total Visitors", "Engaged Users", "Demo/Trial", "Converted"],
-            "count": [total, engaged, demo_users, conversions],
+            "stage": ["Total Visitors", "Leads (Expressed Interest)", "Converted"],
+            "count": [kpis["total_records"], kpis["leads"], kpis["conversions"]],
         })
+
+    def demo_conversion_ratio(self) -> dict:
+        sql = f"""
+            SELECT 
+                COUNT(*) as total_demos,
+                SUM(conversion_flag) as conversions
+            FROM web_logs
+            WHERE activity_type LIKE '%demo%'
+            {self.and_where}
+        """
+        result = run_query(sql)
+        row = result[0] if result else {'total_demos': 0, 'conversions': 0}
+        total_demos = row['total_demos'] or 0
+        conversions = row['conversions'] or 0
+        return {
+            "total_demos": total_demos,
+            "conversions": conversions,
+            "conversion_rate": round((conversions / total_demos) * 100, 2) if total_demos > 0 else 0.0
+        }
 
     # ── FR3: Marketing Effectiveness ─────────────────────────────────────────
     def campaign_performance(self) -> pd.DataFrame:
-        """FR3: Campaign visit count, conversions and revenue."""
-        if "campaign_id" not in self.df.columns:
-            return pd.DataFrame()
-        grp = self.df.groupby("campaign_id").agg(
-            visits=("campaign_id", "count"),
-            conversions=("conversion_flag", "sum") if "conversion_flag" in self.df.columns else ("campaign_id", lambda x: 0),
-            revenue=("revenue", "sum") if "revenue" in self.df.columns else ("campaign_id", lambda x: 0.0),
-        ).reset_index()
-        grp["conversion_rate"] = (grp["conversions"] / grp["visits"] * 100).round(2)
-        return grp.sort_values("revenue", ascending=False)
-
-    # ── FR4: Visit → Conversion Rate ─────────────────────────────────────────
-    def overall_conversion_rate(self) -> float:
-        if "conversion_flag" not in self.df.columns:
-            return 0.0
-        return round(self.df["conversion_flag"].mean() * 100, 2)
-
-    # ── Top-level KPI summaries ───────────────────────────────────────────────
-    def summary_kpis(self) -> dict:
-        total = len(self.df)
-        conversions = int(self.df["conversion_flag"].sum()) if "conversion_flag" in self.df.columns else 0
-        total_revenue = float(self.df["revenue"].sum()) if "revenue" in self.df.columns else 0.0
-        avg_bytes = float(self.df["bytes_sent"].mean()) if "bytes_sent" in self.df.columns else 0.0
-        unique_ips = self.df["ip_address"].nunique() if "ip_address" in self.df.columns else 0
-        unique_countries = self.df["country"].nunique() if "country" in self.df.columns else 0
-        error_rate = 0.0
-        if "status_code" in self.df.columns:
-            errors = self.df["status_code"].apply(lambda x: x >= 400).sum()
-            error_rate = round(errors / total * 100, 2) if total else 0.0
-        return {
-            "total_visits": total,
-            "unique_visitors": unique_ips,
-            "total_conversions": conversions,
-            "conversion_rate": round(conversions / total * 100, 2) if total else 0.0,
-            "total_revenue": total_revenue,
-            "avg_revenue_per_conversion": round(total_revenue / conversions, 2) if conversions else 0.0,
-            "avg_bytes_sent": round(avg_bytes, 0),
-            "unique_countries": unique_countries,
-            "error_rate": error_rate,
-        }
+        sql = f"""
+            SELECT 
+                campaign_type,
+                COUNT(*) as visits,
+                SUM(conversion_flag) as conversions,
+                SUM(revenue_value) as revenue
+            FROM web_logs
+            {self.base_where}
+            GROUP BY campaign_type
+            ORDER BY revenue DESC
+        """
+        df = get_dataframe(sql)
+        if not df.empty:
+            df["conversion_rate"] = (df["conversions"] / df["visits"] * 100).round(2)
+        return df
 
     # ── Time series ───────────────────────────────────────────────────────────
-    def visits_over_time(self, freq: str = "D") -> pd.DataFrame:
-        if "timestamp" not in self.df.columns:
-            return pd.DataFrame()
-        ts = self.df.set_index("timestamp").resample(freq).size().reset_index()
-        ts.columns = ["date", "visits"]
-        return ts
+    def visits_over_time(self) -> pd.DataFrame:
+        # Group by Date (YYYY-MM-DD)
+        sql = f"""
+            SELECT date(timestamp) as date, COUNT(*) as visits
+            FROM web_logs
+            {self.base_where}
+            GROUP BY date(timestamp)
+            ORDER BY date(timestamp)
+        """
+        return get_dataframe(sql)
 
-    def revenue_over_time(self, freq: str = "D") -> pd.DataFrame:
-        if not all(c in self.df.columns for c in ["timestamp", "revenue"]):
-            return pd.DataFrame()
-        ts = self.df.set_index("timestamp")["revenue"].resample(freq).sum().reset_index()
-        ts.columns = ["date", "revenue"]
-        return ts
+    def revenue_over_time(self) -> pd.DataFrame:
+        sql = f"""
+            SELECT date(timestamp) as date, SUM(revenue_value) as revenue
+            FROM web_logs
+            {self.base_where}
+            GROUP BY date(timestamp)
+            ORDER BY date(timestamp)
+        """
+        return get_dataframe(sql)
 
     def hourly_distribution(self) -> pd.DataFrame:
-        if "hour" not in self.df.columns:
-            return pd.DataFrame()
-        hd = self.df.groupby("hour").size().reset_index(name="visits")
-        return hd
+        # SQLite extracts hour using strftime
+        sql = f"""
+            SELECT strftime('%H', timestamp) as hour, COUNT(*) as visits
+            FROM web_logs
+            {self.base_where}
+            GROUP BY hour
+            ORDER BY hour
+        """
+        return get_dataframe(sql)
 
     def status_code_distribution(self) -> pd.DataFrame:
-        if "status_category" not in self.df.columns:
-            return pd.DataFrame()
-        sc = self.df["status_category"].value_counts().reset_index()
-        sc.columns = ["status_category", "count"]
-        return sc
+        # DB column is 'http_status'
+        sql = f"""
+            SELECT 
+                CASE 
+                    WHEN http_status >= 200 AND http_status < 300 THEN '2xx Success'
+                    WHEN http_status >= 300 AND http_status < 400 THEN '3xx Redirect'
+                    WHEN http_status >= 400 AND http_status < 500 THEN '4xx Client Error'
+                    WHEN http_status >= 500 THEN '5xx Server Error'
+                    ELSE 'Unknown'
+                END as status_category,
+                COUNT(*) as count
+            FROM web_logs
+            {self.base_where}
+            GROUP BY status_category
+        """
+        return get_dataframe(sql)
+
+    def geo_distribution(self, top_n: int = 30) -> pd.DataFrame:
+        """Return visit/conversion/revenue counts by location (DB column is 'location')."""
+        sql = f"""
+            SELECT
+                location as country,
+                COUNT(*) as visits,
+                SUM(conversion_flag) as conversions,
+                SUM(revenue_value) as revenue
+            FROM web_logs
+            {self.base_where}
+            GROUP BY location
+            ORDER BY visits DESC
+            LIMIT {top_n}
+        """
+        return get_dataframe(sql)

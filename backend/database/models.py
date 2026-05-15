@@ -47,3 +47,20 @@ class AuditLog(Base):
             "details": self.details,
             "timestamp": str(self.timestamp) if self.timestamp else None,
         }
+
+class WebLog(Base):
+    __tablename__ = "web_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, nullable=False, index=True)
+    ip_address = Column(String(50), nullable=True)
+    method = Column(String(10), nullable=True)
+    uri = Column(String(500), nullable=True)
+    status_code = Column(Integer, nullable=True)
+    bytes_sent = Column(Integer, nullable=True)
+    country = Column(String(100), nullable=True)
+    service_type = Column(String(100), nullable=True)
+    session_id = Column(String(100), nullable=True)
+    conversion_flag = Column(Integer, default=0)
+    campaign_id = Column(String(100), nullable=True)
+    revenue = Column(Integer, default=0)

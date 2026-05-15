@@ -1,25 +1,26 @@
 import streamlit as st
 from streamlit_option_menu import option_menu
 from frontend.components.layout import brand_logo, role_badge
+from frontend.components.live_toggle import render_live_mode_toggle
 from backend.auth.auth_manager import AuthManager
 import textwrap
 
 
 ROLE_MENUS = {
     "website_user": {
-        "items": ["My Dashboard", "Settings"],
-        "icons": ["house-fill", "gear-fill"],
-        "pages": ["pages/01_User_Dashboard.py", "pages/04_Settings.py"],
+        "items": ["My Dashboard", "Notifications", "Settings"],
+        "icons": ["house-fill", "bell-fill", "gear-fill"],
+        "pages": ["pages/01_User_Dashboard.py", "pages/96_Notifications.py", "pages/04_Settings.py"],
     },
     "analyst": {
-        "items": ["Analytics", "Settings"],
-        "icons": ["bar-chart-fill", "gear-fill"],
-        "pages": ["pages/02_Analyst_Dashboard.py", "pages/04_Settings.py"],
+        "items": ["Analytics", "Notifications", "Settings"],
+        "icons": ["bar-chart-fill", "bell-fill", "gear-fill"],
+        "pages": ["pages/02_Analyst_Dashboard.py", "pages/96_Notifications.py", "pages/04_Settings.py"],
     },
     "admin": {
-        "items": ["Admin Panel", "Analytics", "Settings"],
-        "icons": ["shield-lock-fill", "bar-chart-fill", "gear-fill"],
-        "pages": ["pages/03_Admin_Dashboard.py", "pages/02_Analyst_Dashboard.py", "pages/04_Settings.py"],
+        "items": ["Admin Panel", "Analytics", "Live Log Stream", "Notifications", "Settings"],
+        "icons": ["shield-lock-fill", "bar-chart-fill", "activity", "bell-fill", "gear-fill"],
+        "pages": ["pages/03_Admin_Dashboard.py", "pages/02_Analyst_Dashboard.py", "pages/95_Live_Log_Stream.py", "pages/96_Notifications.py", "pages/04_Settings.py"],
     },
 }
 
@@ -51,12 +52,21 @@ def render_sidebar(current_page: str = ""):
         </div>
         """))
 
+        # Calculate default index
+        default_idx = 0
+        if current_page:
+            try:
+                # Match by exact filename
+                default_idx = menu_cfg["pages"].index(current_page)
+            except ValueError:
+                pass
+
         # Navigation menu
         selected = option_menu(
             menu_title=None,
             options=menu_cfg["items"],
             icons=menu_cfg["icons"],
-            default_index=0,
+            default_index=default_idx,
             styles={
                 "container": {"padding": "0", "background": "transparent"},
                 "icon": {"color": "#60a5fa", "font-size": "14px"},
@@ -82,17 +92,14 @@ def render_sidebar(current_page: str = ""):
         for i, item in enumerate(menu_cfg["items"]):
             if selected == item:
                 target = menu_cfg["pages"][i]
-                if current_page and target not in current_page:
+                if target != current_page:
                     st.switch_page(target)
                 break
 
         st.html("<hr class='cn-divider'>")
         
         # Live Mode Toggle
-        if "live_mode" not in st.session_state:
-            st.session_state["live_mode"] = False
-            
-        st.toggle("🟢 Enable Live Mode", key="live_mode", help="Auto-refresh KPIs every 10 seconds")
+        render_live_mode_toggle()
 
         # Logout
         if st.button("Logout", use_container_width=True, key="sidebar_logout"):

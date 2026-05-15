@@ -17,7 +17,10 @@ APP_VERSION = "1.0.0"
 APP_TAGLINE = "Enterprise Web Log Intelligence Platform"
 SECRET_KEY = os.getenv("SECRET_KEY", "cybernova-secret-2026-xK9!mP3@nQ7")
 
-PARQUET_FILE = RAW_DATA_DIR / "web_logs.parquet"
+# Primary Data Sources
+DB_URI = f"sqlite:///{DB_PATH}"
+STATS_FILE = DATA_DIR / "global_stats.json"
+CSV_SOURCE = DATA_DIR / "cybernova_web_logs_500k.csv"
 
 ROLES = {
     "website_user": "Website User",

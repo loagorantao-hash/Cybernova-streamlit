@@ -1,7 +1,7 @@
 import textwrap
 """
 FR1-FR4, FR11-FR13, FR18-FR20 — Business Analyst Dashboard
-Full analytics: KPI grid, filters, charts, geo map, stats, conversion funnel.
+Full analytics: KPI grid, charts, geo map, stats, conversion funnel.
 """
 import sys
 from pathlib import Path
@@ -11,18 +11,22 @@ import streamlit as st
 import pandas as pd
 from frontend.components.layout import set_page_config, load_css, page_header, section_header
 from frontend.components.sidebar import render_sidebar
-from frontend.components import render_kpi_card_enhanced
+from frontend.components.kpi_cards import render_kpi_grid_live
 from frontend.components.charts import (
     bar_chart, donut_chart, line_chart, funnel_chart,
-    choropleth_map, scatter_chart, grouped_bar_chart, show
+    choropleth_map, show
 )
 from frontend.components.data_tables import render_data_table
 from frontend.components.filters import render_filter_panel
 from backend.auth.auth_manager import AuthManager
-from backend.data_ingestion.dataset_loader import load_dataset
+from backend.database.queries import get_dataframe, run_query
 from backend.analytics.kpi_engine import KPIEngine
 from backend.analytics.geo_analyzer import prepare_choropleth_data, top_countries
 from backend.analytics.statistics import descriptive_stats, correlation_matrix, revenue_statistics
+from backend.live_engine import enable_auto_refresh
+from frontend.components.live_kpi_card import render_live_kpi_card
+from frontend.components.alert_card import render_alert_panel
+from datetime import datetime
 
 set_page_config("Analyst Dashboard")
 load_css()
@@ -30,19 +34,25 @@ load_css()
 user = AuthManager.require_auth(allowed_roles=["analyst", "admin"])
 render_sidebar("pages/02_Analyst_Dashboard.py")
 
-from frontend.components.kpi_cards import render_kpi_grid_live
-
 # ── Data ──────────────────────────────────────────────────────────────────────
-df_full = load_dataset()
+engine = KPIEngine()
+summary_kpis = engine.summary_kpis()
+total_records = summary_kpis.get("total_records", 0)
+
 page_header("Analyst Dashboard",
-            f"Full analytics view — {len(df_full):,} records loaded", "")
+            f"Full BI Analytics View — {total_records:,} records in Database", "")
 
-# ── Filter Panel (FR11-FR13) ──────────────────────────────────────────────────
-df = render_filter_panel(df_full, key_prefix="analyst")
+# ── DB Connection Status ──────────────────────────────────────────────────────
+if total_records > 0:
+    st.success(f"✅ Connected to SQLite database — **{total_records:,}** records | revenue, leads, conversions all live from DB")
+else:
+    st.error("❌ Database unavailable or empty — check data/cybernova.db")
 
-# ── KPI Summary Section (v2.0 Enhanced Live) ──────────────────────────────────
-engine = KPIEngine(df)
-render_kpi_grid_live(df)
+# ── Engines Initialization ───────────────────────────────────────────────────
+
+# ── KPI Summary Section ───────────────────────────────────
+st.markdown("### System-Wide Metrics")
+render_kpi_grid_live(user_id=None)
 
 st.html("<div style='height:24px'></div>")
 
@@ -57,13 +67,13 @@ with tab_overview:
 
     with col1:
         section_header("Daily Visit Trend (FR1)")
-        ts = engine.visits_over_time("D")
+        ts = engine.visits_over_time()
         if not ts.empty:
             show(line_chart(ts, "date", "visits", "Visits Over Time", "#2563eb"), key="an_ts")
 
     with col2:
         section_header("Revenue Over Time (FR3)")
-        rev_ts = engine.revenue_over_time("D")
+        rev_ts = engine.revenue_over_time()
         if not rev_ts.empty:
             show(line_chart(rev_ts, "date", "revenue", "Daily Revenue", "#10b981"), key="an_rev_ts")
 
@@ -72,7 +82,7 @@ with tab_overview:
         section_header("Top Services by Visits (FR1)")
         svc = engine.service_usage_frequency(10)
         if not svc.empty:
-            show(bar_chart(svc, "service_type", "visit_count", horizontal=True,
+            show(bar_chart(svc, "service_name", "visit_count", horizontal=True,
                            color="#06b6d4"), key="an_svc")
 
     with col4:
@@ -92,7 +102,7 @@ with tab_overview:
         section_header("Revenue by Service (FR1)")
         svc_rev = engine.service_revenue(10)
         if not svc_rev.empty:
-            show(bar_chart(svc_rev, "service_type", "total_revenue",
+            show(bar_chart(svc_rev, "service_name", "total_revenue",
                            horizontal=True, color="#f59e0b"), key="an_svc_rev")
 
 # ─── TAB 2: Sales & Conversion (FR2, FR4) ────────────────────────────────────
@@ -102,7 +112,7 @@ with tab_sales:
     with col1:
         section_header("Conversion Funnel (FR2 / FR4)")
         funnel_df = engine.sales_funnel()
-        show(funnel_chart(funnel_df, "stage", "count", "Visit → Conversion Funnel"), key="an_funnel")
+        show(funnel_chart(funnel_df, "stage", "count", "Visit → Lead → Conversion Funnel"), key="an_funnel")
 
     with col2:
         section_header("Demo Conversion Metrics (FR2)")
@@ -121,14 +131,15 @@ with tab_sales:
         """))
 
     section_header("Conversion Rate by Service Type")
-    if "service_type" in df.columns and "conversion_flag" in df.columns:
-        conv_by_svc = df.groupby("service_type").agg(
-            visits=("service_type", "count"),
-            conversions=("conversion_flag", "sum"),
-        ).reset_index()
+    conv_by_svc = get_dataframe("""
+        SELECT service_name, COUNT(*) as visits, SUM(conversion_flag) as conversions
+        FROM web_logs
+        GROUP BY service_name
+    """)
+    if not conv_by_svc.empty:
         conv_by_svc["conv_rate"] = (conv_by_svc["conversions"] / conv_by_svc["visits"] * 100).round(2)
         show(bar_chart(conv_by_svc.sort_values("conv_rate", ascending=False),
-                       "service_type", "conv_rate", "Conversion Rate % by Service",
+                       "service_name", "conv_rate", "Conversion Rate % by Service",
                        color="#10b981"), key="an_conv_svc")
 
 # ─── TAB 3: Marketing Effectiveness (FR3) ────────────────────────────────────
@@ -138,102 +149,114 @@ with tab_marketing:
     if not camp.empty:
         col1, col2 = st.columns(2)
         with col1:
-            show(bar_chart(camp, "campaign_id", "visits", "Visits per Campaign",
+            show(bar_chart(camp, "campaign_type", "visits", "Visits per Campaign Type",
                            color="#2563eb"), key="an_camp_visits")
         with col2:
-            show(bar_chart(camp, "campaign_id", "revenue", "Revenue per Campaign",
+            show(bar_chart(camp, "campaign_type", "revenue", "Revenue per Campaign Type",
                            color="#f59e0b"), key="an_camp_rev")
 
         section_header("Campaign Conversion Rates (FR3)")
         show(bar_chart(camp.sort_values("conversion_rate", ascending=False),
-                       "campaign_id", "conversion_rate",
-                       "Conversion Rate % by Campaign", color="#10b981"), key="an_camp_conv")
+                       "campaign_type", "conversion_rate",
+                       "Conversion Rate % by Campaign Type", color="#10b981"), key="an_camp_conv")
 
         st.dataframe(camp, use_container_width=True, hide_index=True)
 
 # ─── TAB 4: Geographic Analysis (FR18) ───────────────────────────────────────
 with tab_geo:
     section_header("Global Visit Distribution (FR18)")
-    geo_df = prepare_choropleth_data(df, metric="visits")
-    if not geo_df.empty:
-        metric_choice = st.radio("Map Metric", ["visits", "conversions", "revenue"],
-                                 horizontal=True, key="geo_metric")
-        show(choropleth_map(geo_df, "country", "iso_alpha", metric_choice,
-                            f"World {metric_choice.title()} Map"), key="an_map")
+    # Uses engine.geo_distribution() which queries 'location' aliased as 'country'
+    geo_agg = engine.geo_distribution(top_n=100)
+
+    if not geo_agg.empty:
+        # prepare_choropleth_data accepts a df with 'country' column
+        geo_df = prepare_choropleth_data(geo_agg, metric="visits")
+
+        if not geo_df.empty:
+            metric_choice = st.radio("Map Metric", ["visits", "conversions", "revenue"],
+                                     horizontal=True, key="geo_metric")
+            show(choropleth_map(geo_df, "country", "iso_alpha", metric_choice,
+                                f"World {metric_choice.title()} Map"), key="an_map")
 
         col1, col2 = st.columns(2)
         with col1:
-            section_header("Top 15 Countries by Visits")
-            top_c = top_countries(df, 15)
+            section_header("Top 15 Locations by Visits")
+            top_c = geo_agg.head(15)
             show(bar_chart(top_c, "country", "visits", horizontal=True,
                            color="#2563eb"), key="an_top_countries")
         with col2:
-            section_header("Country Revenue Leaders")
-            show(bar_chart(top_c.sort_values("revenue", ascending=False).head(10),
+            section_header("Location Revenue Leaders")
+            show(bar_chart(geo_agg.sort_values("revenue", ascending=False).head(10),
                            "country", "revenue", horizontal=True,
                            color="#f59e0b"), key="an_country_rev")
 
-        st.dataframe(top_c, use_container_width=True, hide_index=True)
+        st.dataframe(geo_agg.head(30), use_container_width=True, hide_index=True)
+    else:
+        st.info("No geographic data available.")
+
 
 # ─── TAB 5: Statistical Analysis (FR19) ──────────────────────────────────────
 with tab_stats:
     section_header("Descriptive Statistics (FR19)")
-    stats_df = descriptive_stats(df, ["bytes_sent", "revenue", "status_code"])
-    if not stats_df.empty:
-        st.dataframe(stats_df, use_container_width=True, hide_index=True)
+    # Fetch a sample using only columns that actually exist in web_logs
+    sample_df = get_dataframe(
+        "SELECT response_time_ms, revenue_value, http_status "
+        "FROM web_logs ORDER BY RANDOM() LIMIT 10000"
+    )
+    if not sample_df.empty:
+        # Rename for display clarity
+        sample_df = sample_df.rename(columns={"http_status": "status_code", "revenue_value": "revenue"})
+        stats_df = descriptive_stats(sample_df, ["response_time_ms", "revenue", "status_code"])
+        if not stats_df.empty:
+            st.dataframe(stats_df, use_container_width=True, hide_index=True)
 
     section_header("Revenue Statistics")
-    rev_stats = revenue_statistics(df)
+    rev_stats = run_query("""
+        SELECT 
+            SUM(revenue_value) as total_revenue,
+            AVG(revenue_value) as mean_revenue,
+            MAX(revenue_value) as max_revenue,
+            MIN(revenue_value) as min_revenue
+        FROM web_logs WHERE revenue_value > 0
+    """)
     if rev_stats:
+        r = rev_stats[0]
         r_cols = st.columns(4)
         rev_items = [
-            ("Total Revenue", f"${rev_stats.get('total_revenue', 0):,.2f}"),
-            ("Mean Revenue", f"${rev_stats.get('mean_revenue', 0):,.2f}"),
-            ("Median Revenue", f"${rev_stats.get('median_revenue', 0):,.2f}"),
-            ("Std Deviation", f"${rev_stats.get('std_revenue', 0):,.2f}"),
+            ("Total Revenue", f"${r['total_revenue'] or 0:,.2f}"),
+            ("Mean Revenue", f"${r['mean_revenue'] or 0:,.2f}"),
+            ("Max Revenue", f"${r['max_revenue'] or 0:,.2f}"),
+            ("Min Revenue", f"${r['min_revenue'] or 0:,.2f}"),
         ]
         for col, (lbl, val) in zip(r_cols, rev_items):
             col.metric(lbl, val)
 
-    section_header("Correlation Matrix")
-    corr = correlation_matrix(df)
-    if not corr.empty:
-        num_cols = corr.columns.tolist()
-        import plotly.figure_factory as ff
-        import plotly.graph_objects as go
-        fig_corr = go.Figure(go.Heatmap(
-            z=corr.values, x=num_cols, y=num_cols,
-            colorscale=[[0, "#ef4444"], [0.5, "#1e293b"], [1.0, "#10b981"]],
-            zmin=-1, zmax=1,
-            text=corr.round(2).values, texttemplate="%{text}",
-        ))
-        fig_corr.update_layout(
-            template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#f1f5f9"),
-            margin=dict(l=10, r=10, t=30, b=10),
-            title=dict(text="Pearson Correlation Matrix", font=dict(size=13, color="#cbd5e1")),
-        )
-        show(fig_corr, key="an_corr")
-
-    section_header("Bytes Sent Distribution")
-    if "bytes_sent" in df.columns:
+    section_header("Response Time Distribution")
+    if not sample_df.empty and "response_time_ms" in sample_df.columns:
         import plotly.express as px
         hist_fig = px.histogram(
-            df.sample(min(5000, len(df))), x="bytes_sent",
+            sample_df, x="response_time_ms",
             nbins=50, color_discrete_sequence=["#2563eb"],
         )
         hist_fig.update_layout(
             template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#f1f5f9"),
-            xaxis_title="Bytes Sent", yaxis_title="Frequency",
+            xaxis_title="Response Time (ms)", yaxis_title="Frequency",
         )
         show(hist_fig, key="an_bytes_hist")
 
 # ─── TAB 6: Log Viewer (FR11-FR13) ───────────────────────────────────────────
 with tab_logs:
-    display_cols = ["timestamp", "ip_address", "method", "uri", "status_code",
-                    "bytes_sent", "country", "service_type", "campaign_id",
-                    "conversion_flag", "revenue"]
-    display_cols = [c for c in display_cols if c in df.columns]
-    render_data_table(df[display_cols], title="Filtered Web Log Records",
-                      height=500, enable_export=True, key="an_table")
+    st.info("Loading recent 5,000 records for filtering and review.")
+    df_sample = get_dataframe("SELECT * FROM web_logs ORDER BY timestamp DESC LIMIT 5000")
+    if not df_sample.empty:
+        filtered_df = render_filter_panel(df_sample, key_prefix="analyst")
+        # Use only columns that exist in the actual DB schema
+        display_cols = ["timestamp", "user_id", "ip_address", "activity_type", "service_name",
+                        "page_url", "http_status", "response_time_ms", "location",
+                        "campaign_type", "conversion_flag", "revenue_value"]
+        display_cols = [c for c in display_cols if c in filtered_df.columns]
+        render_data_table(filtered_df[display_cols], title="Filtered Web Log Records",
+                          height=500, enable_export=True, key="an_table")
+    else:
+        st.error("Could not load log records from the database.")
