@@ -13,9 +13,13 @@ class KPIEngine:
         all data (no per-user filter) since there is no FK link.
         """
         self.user_id = user_id
-        # web_logs.user_id has no FK to users.id — no reliable filter.
-        self.base_where = ""
-        self.and_where = ""
+        # In this system, users are identified as 'USER_1', 'USER_2', etc. in the logs.
+        if user_id:
+            self.base_where = f"WHERE user_id = 'USER_{user_id}'"
+            self.and_where = f"AND user_id = 'USER_{user_id}'"
+        else:
+            self.base_where = ""
+            self.and_where = ""
 
     def summary_kpis(self) -> dict:
         # DB columns: http_status, revenue_value, response_time_ms, lead_flag, conversion_flag, user_id (TEXT)
@@ -217,3 +221,34 @@ class KPIEngine:
             LIMIT {top_n}
         """
         return get_dataframe(sql)
+    def user_engagement_score(self) -> int:
+        """Calculate a personal engagement score (0-100)."""
+        kpis = self.summary_kpis()
+        if kpis['total_records'] == 0:
+            return 0
+        
+        # Components: Total Activity (40), Diversity (30), Conversion (30)
+        activity_points = min(kpis['total_records'] / 50 * 40, 40)
+        
+        sql = f"SELECT COUNT(DISTINCT activity_type) as diversity FROM web_logs {self.base_where}"
+        div = run_query(sql)[0]['diversity'] or 0
+        diversity_points = min(div / 5 * 30, 30)
+        
+        conversion_points = 30 if kpis['conversions'] > 0 else 0
+        
+        return int(activity_points + diversity_points + conversion_points)
+
+    def user_activity_timeline(self, limit: int = 20) -> pd.DataFrame:
+        """Get the chronological journey of the user."""
+        sql = f"""
+            SELECT timestamp, activity_type, service_name as job_type, page_url
+            FROM web_logs
+            {self.base_where}
+            ORDER BY timestamp DESC
+            LIMIT {limit}
+        """
+        return get_dataframe(sql)
+
+    def personal_usage_heatmap(self) -> pd.DataFrame:
+        """Hourly activity intensity for the specific user."""
+        return self.hourly_distribution()

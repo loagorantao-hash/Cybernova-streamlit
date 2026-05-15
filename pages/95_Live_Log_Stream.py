@@ -111,20 +111,25 @@ def render_log_stream():
     st.markdown(f"**Showing {len(filtered_logs):,} events from {time_range.lower()}**")
 
     if not filtered_logs.empty:
+        # Rename for UI consistency first (cast to DataFrame to satisfy type checker)
+        ui_logs = pd.DataFrame(filtered_logs).rename(columns={'service_name': 'Job Type'})
+        
         display_columns = [c for c in [
-            'timestamp', 'ip_address', 'location', 'service_name',
+            'timestamp', 'ip_address', 'location', 'Job Type',
             'activity_type', 'http_status', 'revenue_value', 'conversion_flag'
-        ] if c in filtered_logs.columns]
+        ] if c in ui_logs.columns]
+
         
         st.dataframe(
-            filtered_logs[display_columns].head(100),
+            ui_logs[display_columns].head(100),
             use_container_width=True,
+            hide_index=True,
             height=600
         )
 
         col1, col2 = st.columns([6, 1])
         with col2:
-            csv = filtered_logs[display_columns].to_csv(index=False)
+            csv = ui_logs[display_columns].to_csv(index=False)
             st.download_button(
                 label="Export CSV",
                 data=csv,

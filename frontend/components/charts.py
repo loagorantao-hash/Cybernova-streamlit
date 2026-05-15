@@ -142,6 +142,15 @@ def heatmap(z_data, x_labels, y_labels, title: str = "") -> go.Figure:
     return fig
 
 
+# ── Histogram ──────────────────────────────────────────────────────────────────
+def histogram(df: pd.DataFrame, x: str, title: str = "", color: str = "#2563eb", 
+              nbins: int = 30) -> go.Figure:
+    fig = px.histogram(df, x=x, nbins=nbins, color_discrete_sequence=[color])
+    fig.update_layout(**_base_layout(title=dict(text=title, font=dict(size=14, color="#cbd5e1"))))
+    fig.update_traces(marker_line_width=0)
+    return fig
+
+
 # ── Chart Renderer ────────────────────────────────────────────────────────────
 def show(fig: go.Figure, height: int = 380, key: str = None):
     """Render a Plotly figure in Streamlit."""
