@@ -69,7 +69,8 @@ with center:
                         st.success(f"Welcome back, {result['user']['username']}!")
                         st.switch_page(get_home_page(role))
                     else:
-                        st.error(result["error"])
+                        st.error(f"Login Failed: {result['error']}")
+                        st.info("Check your credentials or verify the database is connected in Admin.")
 
         # Demo credentials hint
         st.html(textwrap.dedent("""
@@ -107,6 +108,7 @@ with center:
                     errors.append("Passwords do not match.")
                 if len(r_pass) < 8:
                     errors.append("Password must be at least 8 characters.")
+                
                 if "@" not in r_email:
                     errors.append("Please enter a valid email address.")
 
@@ -117,5 +119,8 @@ with center:
                     result = AuthManager.register(r_username, r_email, r_pass, role=r_role)
                     if result["success"]:
                         st.success("Account created! You can now sign in.")
+                        st.balloons()
                     else:
-                        st.error(result["error"])
+                        logger.error(f"Registration failed for {r_email}: {result.get('error')}")
+                        st.error(f"Registration Error: {result['error']}")
+                        st.warning("Ensure the database is not in read-only mode.")

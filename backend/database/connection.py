@@ -25,7 +25,8 @@ def get_engine():
         @event.listens_for(_engine, "connect")
         def set_sqlite_pragma(dbapi_connection, connection_record):
             cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
+            # DELETE mode is more reliable on certain cloud filesystems than WAL
+            cursor.execute("PRAGMA journal_mode=DELETE")
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.close()
             
