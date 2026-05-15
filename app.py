@@ -61,7 +61,7 @@ def main():
             </div>
             <div style="padding:10px 20px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);
                         border-radius:10px;font-size:12px;color:#34d399;font-weight:600;">
-                AI-Driven Insights
+                Data-Driven Insights
             </div>
         </div>
     </div>

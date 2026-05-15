@@ -60,4 +60,17 @@ def init_db():
     except Exception as e:
         print(f"Auto-seed warning: {e}")
         
+    # Auto-seed default users if table is empty
+    try:
+        user_check = run_query("SELECT COUNT(*) as cnt FROM users")
+        if not user_check or user_check[0]['cnt'] == 0:
+            print("Users table empty. Seeding default accounts...")
+            from backend.auth.auth_manager import AuthManager
+            AuthManager.register("admin", "admin@cybernova.com", "Admin@2026!", role="admin")
+            AuthManager.register("analyst", "analyst@cybernova.com", "Analyst@2026!", role="analyst")
+            AuthManager.register("user", "user@cybernova.com", "User@2026!", role="website_user")
+            print("Default users seeded.")
+    except Exception as e:
+        print(f"User auto-seed warning: {e}")
+        
     return engine

@@ -121,6 +121,5 @@ with center:
                         st.success("Account created! You can now sign in.")
                         st.balloons()
                     else:
-                        logger.error(f"Registration failed for {r_email}: {result.get('error')}")
                         st.error(f"Registration Error: {result['error']}")
                         st.warning("Ensure the database is not in read-only mode.")
