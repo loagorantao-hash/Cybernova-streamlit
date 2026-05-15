@@ -11,6 +11,7 @@ from frontend.components.layout import set_page_config, load_css
 from backend.auth.auth_manager import AuthManager
 from backend.auth.rbac import get_home_page
 from backend.database.connection import init_db
+from config import ROLES
 
 set_page_config("Sign In")
 load_css()
@@ -92,6 +93,8 @@ with center:
             r_email = st.text_input("Email Address", placeholder="you@example.com", key="reg_email", autocomplete="email")
             r_pass = st.text_input("Password", type="password", placeholder="Min 8 characters", key="reg_pass", autocomplete="new-password")
             r_pass2 = st.text_input("Confirm Password", type="password", placeholder="Repeat password", key="reg_pass2", autocomplete="new-password")
+            
+            r_role = st.selectbox("User Type", options=list(ROLES.keys()), format_func=lambda x: ROLES[x], key="reg_role")
 
             st.html("<div style='height:4px'></div>")
             reg_submitted = st.form_submit_button("Create Account", use_container_width=True)
@@ -111,7 +114,7 @@ with center:
                     for e in errors:
                         st.error(e)
                 else:
-                    result = AuthManager.register(r_username, r_email, r_pass, role="website_user")
+                    result = AuthManager.register(r_username, r_email, r_pass, role=r_role)
                     if result["success"]:
                         st.success("Account created! You can now sign in.")
                     else:
