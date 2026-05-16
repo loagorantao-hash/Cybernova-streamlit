@@ -1,8 +1,9 @@
-import textwrap
 """
 CyberNova Analytics — Main Entry Point
 Handles authentication gate and redirects to role-appropriate dashboard.
+Auto-initializes the database and seeds default users on first start.
 """
+import textwrap
 import streamlit as st
 import sys
 from pathlib import Path
@@ -10,7 +11,52 @@ from pathlib import Path
 # Ensure project root is on sys.path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from frontend.components.layout import set_page_config, load_css, page_header, brand_logo
+# ── Auto-Initialize Database (Critical for Streamlit Cloud) ──────────────────
+# This block runs ONCE per cold start. It creates the DB schema and seeds
+# the three default users if they do not already exist.
+# This eliminates the need to manually run `python scripts/init_db.py`.
+from backend.database.connection import init_db, get_session
+from backend.database.models import User
+from passlib.hash import bcrypt
+
+_DEFAULT_USERS = [
+    {"username": "admin",   "email": "admin@cybernova.com",   "password": "Admin@2026!",   "role": "admin"},
+    {"username": "analyst", "email": "analyst@cybernova.com", "password": "Analyst@2026!", "role": "analyst"},
+    {"username": "user",    "email": "user@cybernova.com",    "password": "User@2026!",    "role": "website_user"},
+]
+
+def _bootstrap_database():
+    """
+    Ensures the database schema exists and the three default users are seeded.
+    Safe to call on every app startup — uses INSERT-IF-NOT-EXISTS logic.
+    """
+    try:
+        init_db()
+        session = get_session()
+        try:
+            for u in _DEFAULT_USERS:
+                exists = session.query(User).filter(User.email == u["email"]).first()
+                if not exists:
+                    session.add(User(
+                        username=u["username"],
+                        email=u["email"],
+                        password_hash=bcrypt.hash(u["password"]),
+                        role=u["role"],
+                        is_active=True,
+                    ))
+            session.commit()
+        finally:
+            session.close()
+    except Exception as e:
+        # Show a visible warning in the sidebar for debugging cloud issues
+        st.sidebar.warning(f"⚠️ DB Bootstrap warning: {e}")
+
+# Run on every cold start (Streamlit re-runs this on each page load,
+# but the INSERT-IF-NOT-EXISTS guard makes it safe and near-zero cost)
+_bootstrap_database()
+# ─────────────────────────────────────────────────────────────────────────────
+
+from frontend.components.layout import set_page_config, load_css
 from backend.auth.auth_manager import AuthManager
 from backend.auth.rbac import get_home_page
 
@@ -61,7 +107,7 @@ def main():
             </div>
             <div style="padding:10px 20px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);
                         border-radius:10px;font-size:12px;color:#34d399;font-weight:600;">
-                Data-Driven Insights
+                AI-Driven Insights
             </div>
         </div>
     </div>
