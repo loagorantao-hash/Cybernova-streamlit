@@ -25,11 +25,17 @@ _DEFAULT_USERS = [
     {"username": "user",    "email": "user@cybernova.com",    "password": "User@2026!",    "role": "website_user"},
 ]
 
+_BOOTSTRAPPED = False
+
 def _bootstrap_database():
     """
-    Ensures the database schema exists and the three default users are seeded.
-    Safe to call on every app startup — uses INSERT-IF-NOT-EXISTS logic.
+    Runs ONCE per server process via the _BOOTSTRAPPED flag.
+    Prevents 'database is locked' from concurrent Streamlit reruns
+    all trying to write at the same time.
     """
+    global _BOOTSTRAPPED
+    if _BOOTSTRAPPED:
+        return
     try:
         init_db()
         session = get_session()
@@ -47,12 +53,10 @@ def _bootstrap_database():
             session.commit()
         finally:
             session.close()
+        _BOOTSTRAPPED = True
     except Exception as e:
-        # Show a visible warning in the sidebar for debugging cloud issues
         st.sidebar.warning(f"⚠️ DB Bootstrap warning: {e}")
 
-# Run on every cold start (Streamlit re-runs this on each page load,
-# but the INSERT-IF-NOT-EXISTS guard makes it safe and near-zero cost)
 _bootstrap_database()
 # ─────────────────────────────────────────────────────────────────────────────
 
