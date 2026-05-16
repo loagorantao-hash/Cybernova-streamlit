@@ -51,16 +51,50 @@ class AuditLog(Base):
 class WebLog(Base):
     __tablename__ = "web_logs"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, nullable=False, index=True)
-    ip_address = Column(String(50), nullable=True)
-    method = Column(String(10), nullable=True)
-    uri = Column(String(500), nullable=True)
-    status_code = Column(Integer, nullable=True)
-    bytes_sent = Column(Integer, nullable=True)
-    country = Column(String(100), nullable=True)
-    service_type = Column(String(100), nullable=True)
-    session_id = Column(String(100), nullable=True)
-    conversion_flag = Column(Integer, default=0)
-    campaign_id = Column(String(100), nullable=True)
-    revenue = Column(Integer, default=0)
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp       = Column(DateTime, nullable=True, index=True)
+
+    # Identity & session
+    user_id         = Column(String(50),  nullable=True, index=True)
+    session_id      = Column(String(100), nullable=True, index=True)
+    ip_address      = Column(String(50),  nullable=True)
+
+    # Request details
+    activity_type   = Column(String(100), nullable=True)
+    service_name    = Column(String(200), nullable=True)
+    page_url        = Column(String(500), nullable=True)
+    http_status     = Column(Integer,     nullable=True)
+    response_time_ms= Column(Integer,     nullable=True)
+
+    # Geography & campaign
+    location        = Column(String(100), nullable=True)
+    campaign_id     = Column(String(100), nullable=True)
+    campaign_type   = Column(String(100), nullable=True)
+    referrer        = Column(String(200), nullable=True)
+
+    # Device info
+    device_type     = Column(String(50),  nullable=True)
+    browser         = Column(String(50),  nullable=True)
+
+    # Business metrics
+    lead_flag       = Column(Integer,     default=0)
+    conversion_flag = Column(Integer,     default=0)
+    conversion_type = Column(String(100), nullable=True)
+    revenue_value   = Column(Integer,     default=0)
+
+    # Legacy aliases kept for backward compatibility with old queries
+    @property
+    def status_code(self):
+        return self.http_status
+
+    @property
+    def country(self):
+        return self.location
+
+    @property
+    def service_type(self):
+        return self.service_name
+
+    @property
+    def revenue(self):
+        return self.revenue_value
