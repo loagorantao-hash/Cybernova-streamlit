@@ -18,16 +18,22 @@ def get_engine():
     if _engine is None:
         _engine = create_engine(
             f"sqlite:///{DB_PATH}",
-            connect_args={"check_same_thread": False},
+            connect_args={
+                "check_same_thread": False,
+                "timeout": 30,          # wait up to 30s for a lock to clear
+            },
+            pool_pre_ping=True,
+            pool_recycle=300,
             echo=False,
         )
         
         @event.listens_for(_engine, "connect")
         def set_sqlite_pragma(dbapi_connection, connection_record):
             cursor = dbapi_connection.cursor()
-            # DELETE mode is more reliable on certain cloud filesystems than WAL
-            cursor.execute("PRAGMA journal_mode=DELETE")
-            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA journal_mode=WAL")      # write-ahead log
+            cursor.execute("PRAGMA synchronous=NORMAL")    # safe + fast
+            cursor.execute("PRAGMA busy_timeout=30000")    # 30s lock wait
+            cursor.execute("PRAGMA cache_size=-64000")     # 64MB cache
             cursor.close()
             
         Base.metadata.create_all(_engine)
@@ -59,18 +65,5 @@ def init_db():
                 print("Seeding complete.")
     except Exception as e:
         print(f"Auto-seed warning: {e}")
-        
-    # Auto-seed default users if table is empty
-    try:
-        user_check = run_query("SELECT COUNT(*) as cnt FROM users")
-        if not user_check or user_check[0]['cnt'] == 0:
-            print("Users table empty. Seeding default accounts...")
-            from backend.auth.auth_manager import AuthManager
-            AuthManager.register("admin", "admin@cybernova.com", "Admin@2026!", role="admin")
-            AuthManager.register("analyst", "analyst@cybernova.com", "Analyst@2026!", role="analyst")
-            AuthManager.register("user", "user@cybernova.com", "User@2026!", role="website_user")
-            print("Default users seeded.")
-    except Exception as e:
-        print(f"User auto-seed warning: {e}")
         
     return engine
